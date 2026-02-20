@@ -34,10 +34,10 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/woodpantry-ingredients:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/woodpantry-ingredients:latest
+            ghcr.io/${{ github.repository_owner }}/woodpantry-pantry:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/woodpantry-pantry:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Print image tag
-        run: echo "Built ghcr.io/${{ github.repository_owner }}/woodpantry-ingredients:${{ steps.tag.outputs.tag }}"
+        run: echo "Built ghcr.io/${{ github.repository_owner }}/woodpantry-pantry:${{ steps.tag.outputs.tag }}"
