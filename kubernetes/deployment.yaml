@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pantry
+  namespace: woodpantry
+  labels:
+    app: pantry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pantry
+  template:
+    metadata:
+      labels:
+        app: pantry
+    spec:
+      containers:
+        - name: pantry
+          image: ghcr.io/mwhite7112/woodpantry-pantry:${IMAGE_TAG}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: DICTIONARY_URL
+              value: "http://ingredients.woodpantry.svc.cluster.local"
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pantry-db-secret
+                  key: url
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-secret
+                  key: api-key
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
