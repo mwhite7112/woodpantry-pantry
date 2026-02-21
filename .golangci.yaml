@@ -1,0 +1,10 @@
+linters:
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters: [errcheck]
+        path: _test\.go
