@@ -1,10 +1,15 @@
+version: 2
+
 linters:
-  exclusions:
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
-    rules:
-      - linters: [errcheck]
-        path: _test\.go
+  enable:
+    - errcheck
+
+issues:
+  exclude-rules:
+    - linters:
+        - errcheck
+      text: '(?i)Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked'
+
+    - path: _test\.go
+      linters:
+        - errcheck
