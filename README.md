@@ -99,7 +99,42 @@ POST /pantry/ingest/:job_id/confirm
 
 ## Development
 
+### Prerequisites
+
+- Go 1.23+
+- Docker or Podman (for integration tests — testcontainers-go pulls Postgres automatically)
+- [sqlc](https://sqlc.dev) (`go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest`)
+- [mockery](https://vektra.github.io/mockery/) v2 (`go install github.com/vektra/mockery/v2@latest`)
+
+### Local Setup
+
+```bash
+export DB_URL="postgres://user:pass@localhost:5432/pantry_db?sslmode=disable"
+export DICTIONARY_URL="http://localhost:8081"
+export OPENAI_API_KEY="sk-..."
+export EXTRACT_MODEL="gpt-4o-mini"
+export LOG_LEVEL=debug
+```
+
+### Run
+
 ```bash
 go run ./cmd/pantry/main.go
-sqlc generate -f internal/db/sqlc.yaml
+```
+
+### Test
+
+```bash
+make test                  # unit tests
+make test-integration      # integration tests (requires Docker)
+make test-all              # unit + integration
+make test-coverage         # unit tests with coverage report
+make test-coverage-html    # HTML coverage report (opens coverage.html)
+```
+
+### Code Generation
+
+```bash
+make sqlc                  # regenerate DB layer from SQL queries in internal/db/queries/
+make generate-mocks        # regenerate mocks from interfaces via mockery
 ```
