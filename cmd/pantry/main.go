@@ -3,7 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -15,41 +15,50 @@ import (
 	"github.com/mwhite7112/woodpantry-pantry/internal/api"
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
+	"github.com/mwhite7112/woodpantry-pantry/internal/logging"
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
 )
 
 func main() {
+	logging.Setup()
+
 	port := envOrDefault("PORT", "8080")
 
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
-		log.Fatal("DB_URL is required")
+		slog.Error("DB_URL is required")
+		os.Exit(1)
 	}
 
 	dictURL := os.Getenv("DICTIONARY_URL")
 	if dictURL == "" {
-		log.Fatal("DICTIONARY_URL is required")
+		slog.Error("DICTIONARY_URL is required")
+		os.Exit(1)
 	}
 
 	openaiKey := os.Getenv("OPENAI_API_KEY")
 	if openaiKey == "" {
-		log.Fatal("OPENAI_API_KEY is required")
+		slog.Error("OPENAI_API_KEY is required")
+		os.Exit(1)
 	}
 
 	extractModel := envOrDefault("EXTRACT_MODEL", "gpt-4o-mini")
 
 	sqlDB, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		slog.Error("open database", "error", err)
+		os.Exit(1)
 	}
 	defer sqlDB.Close()
 
 	if err := sqlDB.Ping(); err != nil {
-		log.Fatalf("connect to database: %v", err)
+		slog.Error("connect to database", "error", err)
+		os.Exit(1)
 	}
 
 	if err := runMigrations(sqlDB); err != nil {
-		log.Fatalf("migrations: %v", err)
+		slog.Error("migrations", "error", err)
+		os.Exit(1)
 	}
 
 	queries := db.New(sqlDB)
@@ -62,9 +71,10 @@ func main() {
 	handler := api.NewRouter(pantry, ingest, dict)
 
 	addr := fmt.Sprintf(":%s", port)
-	log.Printf("pantry service listening on %s", addr)
+	slog.Info("pantry service listening", "addr", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
-		log.Fatalf("server: %v", err)
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
 }
 

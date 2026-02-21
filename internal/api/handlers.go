@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -11,12 +12,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
+	"github.com/mwhite7112/woodpantry-pantry/internal/logging"
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
 )
 
 // NewRouter wires all routes.
 func NewRouter(pantry *service.PantryService, ingest *service.IngestService, dict *clients.DictionaryClient) http.Handler {
 	r := chi.NewRouter()
+	r.Use(logging.Middleware)
 	r.Use(middleware.Recoverer)
 
 	r.Get("/healthz", handleHealth)
@@ -42,7 +45,7 @@ func handleListPantry(pantry *service.PantryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		items, err := pantry.ListItems(r.Context())
 		if err != nil {
-			jsonError(w, "failed to list pantry items", http.StatusInternalServerError)
+			jsonError(w, "failed to list pantry items", http.StatusInternalServerError, err)
 			return
 		}
 		jsonOK(w, map[string]any{"items": items})
@@ -107,7 +110,7 @@ func handleAddItem(pantry *service.PantryService, dict *clients.DictionaryClient
 
 		item, err := pantry.UpsertItem(r.Context(), ingredientID, req.Quantity, req.Unit, expiresAt)
 		if err != nil {
-			jsonError(w, "failed to save pantry item", http.StatusInternalServerError)
+			jsonError(w, "failed to save pantry item", http.StatusInternalServerError, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -130,7 +133,7 @@ func handleDeleteItem(pantry *service.PantryService) http.HandlerFunc {
 				jsonError(w, "item not found", http.StatusNotFound)
 				return
 			}
-			jsonError(w, "failed to delete item", http.StatusInternalServerError)
+			jsonError(w, "failed to delete item", http.StatusInternalServerError, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -146,7 +149,7 @@ func handleReset(pantry *service.PantryService) http.HandlerFunc {
 			return
 		}
 		if err := pantry.Reset(r.Context()); err != nil {
-			jsonError(w, "failed to reset pantry", http.StatusInternalServerError)
+			jsonError(w, "failed to reset pantry", http.StatusInternalServerError, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -160,7 +163,10 @@ func jsonOK(w http.ResponseWriter, v any) {
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
 }
 
-func jsonError(w http.ResponseWriter, msg string, status int) {
+func jsonError(w http.ResponseWriter, msg string, status int, errs ...error) {
+	if status >= 500 && len(errs) > 0 {
+		slog.Error(msg, "status", status, "error", errs[0])
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck

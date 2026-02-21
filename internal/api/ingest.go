@@ -36,7 +36,7 @@ func handleIngest(ingest *service.IngestService) http.HandlerFunc {
 
 		job, err := ingest.CreateJob(r.Context(), jobType, req.Content)
 		if err != nil {
-			jsonError(w, "failed to create ingest job", http.StatusInternalServerError)
+			jsonError(w, "failed to create ingest job", http.StatusInternalServerError, err)
 			return
 		}
 
@@ -67,13 +67,13 @@ func handleGetJob(ingest *service.IngestService) http.HandlerFunc {
 				jsonError(w, "job not found", http.StatusNotFound)
 				return
 			}
-			jsonError(w, "failed to get job", http.StatusInternalServerError)
+			jsonError(w, "failed to get job", http.StatusInternalServerError, err)
 			return
 		}
 
 		items, err := ingest.ListStagedItems(r.Context(), jobID)
 		if err != nil {
-			jsonError(w, "failed to get staged items", http.StatusInternalServerError)
+			jsonError(w, "failed to get staged items", http.StatusInternalServerError, err)
 			return
 		}
 

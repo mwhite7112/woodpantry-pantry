@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -52,7 +52,7 @@ func (s *IngestService) ProcessJobAsync(jobID uuid.UUID, rawInput string) {
 		defer cancel()
 
 		if err := s.processJob(ctx, jobID, rawInput); err != nil {
-			log.Printf("ingest job %s failed: %v", jobID, err)
+			slog.Error("ingest job failed", "job_id", jobID, "error", err)
 			_, _ = s.q.UpdateIngestionJobStatus(ctx, db.UpdateIngestionJobStatusParams{
 				ID:     jobID,
 				Status: "failed",
@@ -62,10 +62,14 @@ func (s *IngestService) ProcessJobAsync(jobID uuid.UUID, rawInput string) {
 }
 
 func (s *IngestService) processJob(ctx context.Context, jobID uuid.UUID, rawInput string) error {
+	slog.Info("LLM extraction starting", "job_id", jobID, "model", s.model, "input_len", len(rawInput))
+
 	extracted, err := s.extractWithLLM(ctx, rawInput)
 	if err != nil {
 		return fmt.Errorf("llm extraction: %w", err)
 	}
+
+	slog.Info("LLM extraction complete", "job_id", jobID, "items", len(extracted.Items))
 
 	for _, item := range extracted.Items {
 		var ingredientID db.NullUUID
@@ -73,7 +77,7 @@ func (s *IngestService) processJob(ctx context.Context, jobID uuid.UUID, rawInpu
 
 		result, resolveErr := s.dictionary.Resolve(ctx, item.Name)
 		if resolveErr != nil {
-			log.Printf("dictionary resolve failed for %q: %v", item.Name, resolveErr)
+			slog.Warn("dictionary resolve failed", "job_id", jobID, "name", item.Name, "error", resolveErr)
 			needsReview = true
 		} else {
 			ingredientID = db.NullUUID{UUID: result.Ingredient.ID, Valid: true}
@@ -164,7 +168,7 @@ func (s *IngestService) ConfirmJob(ctx context.Context, jobID uuid.UUID, pantry 
 		}
 
 		if !ingredientID.Valid {
-			log.Printf("skipping staged item %s (%q): no ingredient_id resolved", item.ID, item.RawText)
+			slog.Warn("skipping staged item: no ingredient_id resolved", "item_id", item.ID, "raw_text", item.RawText)
 			continue
 		}
 
