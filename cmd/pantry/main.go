@@ -42,7 +42,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	extractModel := envOrDefault("EXTRACT_MODEL", "gpt-4o-mini")
+	extractModel := envOrDefault("EXTRACT_MODEL", "gpt-5-mini")
 
 	sqlDB, err := sql.Open("postgres", dbURL)
 	if err != nil {
