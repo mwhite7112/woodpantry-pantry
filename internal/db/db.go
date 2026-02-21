@@ -25,5 +25,7 @@ type Queries struct {
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
-	return &Queries{db: tx}
+	return &Queries{
+		db: tx,
+	}
 }

@@ -12,23 +12,33 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
 )
 
 // IngestService handles the staged ingest flow: LLM extraction → staging → confirm.
 type IngestService struct {
-	q          *db.Queries
-	dictionary *clients.DictionaryClient
+	q          db.Querier
+	dictionary DictionaryResolver
+	extractor  LLMExtractor
+}
+
+func NewIngestService(q db.Querier, dictionary DictionaryResolver, extractor LLMExtractor) *IngestService {
+	return &IngestService{
+		q:          q,
+		dictionary: dictionary,
+		extractor:  extractor,
+	}
+}
+
+// OpenAIExtractor implements LLMExtractor using the OpenAI API.
+type OpenAIExtractor struct {
 	apiKey     string
 	model      string
 	httpClient *http.Client
 }
 
-func NewIngestService(q *db.Queries, dictionary *clients.DictionaryClient, apiKey, model string) *IngestService {
-	return &IngestService{
-		q:          q,
-		dictionary: dictionary,
+func NewOpenAIExtractor(apiKey, model string) *OpenAIExtractor {
+	return &OpenAIExtractor{
 		apiKey:     apiKey,
 		model:      model,
 		httpClient: &http.Client{Timeout: 60 * time.Second},
@@ -62,9 +72,9 @@ func (s *IngestService) ProcessJobAsync(jobID uuid.UUID, rawInput string) {
 }
 
 func (s *IngestService) processJob(ctx context.Context, jobID uuid.UUID, rawInput string) error {
-	slog.Info("LLM extraction starting", "job_id", jobID, "model", s.model, "input_len", len(rawInput))
+	slog.Info("LLM extraction starting", "job_id", jobID, "input_len", len(rawInput))
 
-	extracted, err := s.extractWithLLM(ctx, rawInput)
+	extracted, err := s.extractor.Extract(ctx, rawInput)
 	if err != nil {
 		return fmt.Errorf("llm extraction: %w", err)
 	}
@@ -72,7 +82,7 @@ func (s *IngestService) processJob(ctx context.Context, jobID uuid.UUID, rawInpu
 	slog.Info("LLM extraction complete", "job_id", jobID, "items", len(extracted.Items))
 
 	for _, item := range extracted.Items {
-		var ingredientID db.NullUUID
+		var ingredientID uuid.NullUUID
 		needsReview := item.Confidence < 0.7
 
 		result, resolveErr := s.dictionary.Resolve(ctx, item.Name)
@@ -80,7 +90,7 @@ func (s *IngestService) processJob(ctx context.Context, jobID uuid.UUID, rawInpu
 			slog.Warn("dictionary resolve failed", "job_id", jobID, "name", item.Name, "error", resolveErr)
 			needsReview = true
 		} else {
-			ingredientID = db.NullUUID{UUID: result.Ingredient.ID, Valid: true}
+			ingredientID = uuid.NullUUID{UUID: result.Ingredient.ID, Valid: true}
 		}
 
 		if _, err := s.q.CreateStagedItem(ctx, db.CreateStagedItemParams{
@@ -157,7 +167,7 @@ func (s *IngestService) ConfirmJob(ctx context.Context, jobID uuid.UUID, pantry 
 
 		if o, ok := overrideMap[item.ID]; ok {
 			if o.IngredientID != nil {
-				ingredientID = db.NullUUID{UUID: *o.IngredientID, Valid: true}
+				ingredientID = uuid.NullUUID{UUID: *o.IngredientID, Valid: true}
 			}
 			if o.Quantity != nil {
 				quantity = *o.Quantity
@@ -186,7 +196,7 @@ func (s *IngestService) ConfirmJob(ctx context.Context, jobID uuid.UUID, pantry 
 
 // --- LLM extraction ---
 
-type extractedItem struct {
+type ExtractedItem struct {
 	RawText    string  `json:"raw_text"`
 	Name       string  `json:"name"`
 	Quantity   float64 `json:"quantity"`
@@ -194,8 +204,8 @@ type extractedItem struct {
 	Confidence float64 `json:"confidence"`
 }
 
-type extractionResponse struct {
-	Items []extractedItem `json:"items"`
+type ExtractionResponse struct {
+	Items []ExtractedItem `json:"items"`
 }
 
 const systemPrompt = `You are a grocery list parser. Extract ingredients with quantities from the user's text.
@@ -210,9 +220,9 @@ Return a JSON object with an "items" array. Each item must have:
 For ambiguous or unclear items set confidence below 0.7.
 For items where the unit is unclear, use "piece".`
 
-func (s *IngestService) extractWithLLM(ctx context.Context, text string) (*extractionResponse, error) {
+func (e *OpenAIExtractor) Extract(ctx context.Context, text string) (*ExtractionResponse, error) {
 	payload := map[string]any{
-		"model": s.model,
+		"model": e.model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": text},
@@ -233,9 +243,9 @@ func (s *IngestService) extractWithLLM(ctx context.Context, text string) (*extra
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	req.Header.Set("Authorization", "Bearer "+e.apiKey)
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := e.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("openai request: %w", err)
 	}
@@ -260,7 +270,7 @@ func (s *IngestService) extractWithLLM(ctx context.Context, text string) (*extra
 		return nil, fmt.Errorf("openai returned no choices")
 	}
 
-	var extracted extractionResponse
+	var extracted ExtractionResponse
 	if err := json.Unmarshal([]byte(chatResp.Choices[0].Message.Content), &extracted); err != nil {
 		return nil, fmt.Errorf("parse extraction json: %w", err)
 	}

@@ -7,3 +7,4 @@ sql:
       go:
         package: "db"
         out: "."
+        emit_interface: true

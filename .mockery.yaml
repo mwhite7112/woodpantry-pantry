@@ -1,0 +1,15 @@
+with-expecter: true
+dir: "internal/mocks"
+outpkg: "mocks"
+packages:
+  github.com/mwhite7112/woodpantry-pantry/internal/db:
+    interfaces:
+      Querier:
+  github.com/mwhite7112/woodpantry-pantry/internal/service:
+    config:
+      dir: "internal/service"
+      outpkg: "service"
+      inpackage: true
+    interfaces:
+      DictionaryResolver:
+      LLMExtractor:

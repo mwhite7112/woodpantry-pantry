@@ -117,6 +117,21 @@ woodpantry-pantry/
 └── go.sum
 ```
 
+## Testing
+
+```bash
+make test                # Unit tests
+make test-integration    # Integration tests (requires Docker)
+make test-coverage       # Unit tests with coverage
+make generate-mocks      # Regenerate mocks from .mockery.yaml
+make sqlc                # Regenerate sqlc
+```
+
+- Unit tests: `internal/service/` (pantry CRUD, ingest processJob/confirm), `internal/clients/` (dictionary client), `internal/api/` (all endpoints + ingest flow)
+- Integration tests: `internal/service/` (upsert idempotency, delete, reset with real Postgres)
+- Mocks: `internal/mocks/` (Querier), `internal/service/` (LLMExtractor, DictionaryResolver — in-package to avoid import cycle)
+- Service uses `db.Querier`, `DictionaryResolver`, and `LLMExtractor` interfaces for testability
+
 ## What to Avoid
 
 - Do not store raw ingredient strings as the primary ingredient reference — always resolve to a Dictionary ID.

@@ -11,6 +11,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type IngestionJob struct {
+	ID        uuid.UUID
+	Type      string
+	RawInput  string
+	Status    string
+	CreatedAt time.Time
+}
+
 type PantryItem struct {
 	ID           uuid.UUID
 	IngredientID uuid.UUID
@@ -21,18 +29,10 @@ type PantryItem struct {
 	UpdatedAt    time.Time
 }
 
-type IngestionJob struct {
-	ID        uuid.UUID
-	Type      string
-	RawInput  string
-	Status    string
-	CreatedAt time.Time
-}
-
 type StagedItem struct {
 	ID           uuid.UUID
 	JobID        uuid.UUID
-	IngredientID NullUUID
+	IngredientID uuid.NullUUID
 	RawText      string
 	Quantity     float64
 	Unit         string
