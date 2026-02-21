@@ -10,10 +10,10 @@ import (
 
 // PantryService handles pantry item CRUD.
 type PantryService struct {
-	q *db.Queries
+	q db.Querier
 }
 
-func NewPantryService(q *db.Queries) *PantryService {
+func NewPantryService(q db.Querier) *PantryService {
 	return &PantryService{q: q}
 }
 

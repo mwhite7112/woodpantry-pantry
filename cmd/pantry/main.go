@@ -66,7 +66,8 @@ func main() {
 
 	pantry := service.NewPantryService(queries)
 	dict := clients.NewDictionaryClient(dictURL, httpClient)
-	ingest := service.NewIngestService(queries, dict, openaiKey, extractModel)
+	extractor := service.NewOpenAIExtractor(openaiKey, extractModel)
+	ingest := service.NewIngestService(queries, dict, extractor)
 
 	handler := api.NewRouter(pantry, ingest, dict)
 

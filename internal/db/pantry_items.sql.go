@@ -12,10 +12,50 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteAllPantryItems = `-- name: DeleteAllPantryItems :exec
+DELETE FROM pantry_items
+`
+
+func (q *Queries) DeleteAllPantryItems(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllPantryItems)
+	return err
+}
+
+const deletePantryItem = `-- name: DeletePantryItem :exec
+DELETE FROM pantry_items WHERE id = $1
+`
+
+func (q *Queries) DeletePantryItem(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deletePantryItem, id)
+	return err
+}
+
+const getPantryItem = `-- name: GetPantryItem :one
+SELECT id, ingredient_id, quantity, unit, expires_at, added_at, updated_at
+FROM pantry_items
+WHERE id = $1
+`
+
+func (q *Queries) GetPantryItem(ctx context.Context, id uuid.UUID) (PantryItem, error) {
+	row := q.db.QueryRowContext(ctx, getPantryItem, id)
+	var i PantryItem
+	err := row.Scan(
+		&i.ID,
+		&i.IngredientID,
+		&i.Quantity,
+		&i.Unit,
+		&i.ExpiresAt,
+		&i.AddedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listPantryItems = `-- name: ListPantryItems :many
 SELECT id, ingredient_id, quantity, unit, expires_at, added_at, updated_at
 FROM pantry_items
-ORDER BY added_at`
+ORDER BY added_at
+`
 
 func (q *Queries) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
 	rows, err := q.db.QueryContext(ctx, listPantryItems)
@@ -48,26 +88,6 @@ func (q *Queries) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
 	return items, nil
 }
 
-const getPantryItem = `-- name: GetPantryItem :one
-SELECT id, ingredient_id, quantity, unit, expires_at, added_at, updated_at
-FROM pantry_items
-WHERE id = $1`
-
-func (q *Queries) GetPantryItem(ctx context.Context, id uuid.UUID) (PantryItem, error) {
-	row := q.db.QueryRowContext(ctx, getPantryItem, id)
-	var i PantryItem
-	err := row.Scan(
-		&i.ID,
-		&i.IngredientID,
-		&i.Quantity,
-		&i.Unit,
-		&i.ExpiresAt,
-		&i.AddedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const upsertPantryItem = `-- name: UpsertPantryItem :one
 INSERT INTO pantry_items (ingredient_id, quantity, unit, expires_at)
 VALUES ($1, $2, $3, $4)
@@ -76,9 +96,9 @@ ON CONFLICT (ingredient_id) DO UPDATE
       unit       = EXCLUDED.unit,
       expires_at = EXCLUDED.expires_at,
       updated_at = now()
-RETURNING id, ingredient_id, quantity, unit, expires_at, added_at, updated_at`
+RETURNING id, ingredient_id, quantity, unit, expires_at, added_at, updated_at
+`
 
-// UpsertPantryItemParams are the parameters for UpsertPantryItem.
 type UpsertPantryItemParams struct {
 	IngredientID uuid.UUID
 	Quantity     float64
@@ -104,20 +124,4 @@ func (q *Queries) UpsertPantryItem(ctx context.Context, arg UpsertPantryItemPara
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const deletePantryItem = `-- name: DeletePantryItem :exec
-DELETE FROM pantry_items WHERE id = $1`
-
-func (q *Queries) DeletePantryItem(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, deletePantryItem, id)
-	return err
-}
-
-const deleteAllPantryItems = `-- name: DeleteAllPantryItems :exec
-DELETE FROM pantry_items`
-
-func (q *Queries) DeleteAllPantryItems(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllPantryItems)
-	return err
 }

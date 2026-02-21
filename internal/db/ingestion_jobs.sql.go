@@ -14,9 +14,9 @@ import (
 const createIngestionJob = `-- name: CreateIngestionJob :one
 INSERT INTO ingestion_jobs (type, raw_input)
 VALUES ($1, $2)
-RETURNING id, type, raw_input, status, created_at`
+RETURNING id, type, raw_input, status, created_at
+`
 
-// CreateIngestionJobParams are the parameters for CreateIngestionJob.
 type CreateIngestionJobParams struct {
 	Type     string
 	RawInput string
@@ -35,58 +35,15 @@ func (q *Queries) CreateIngestionJob(ctx context.Context, arg CreateIngestionJob
 	return i, err
 }
 
-const getIngestionJob = `-- name: GetIngestionJob :one
-SELECT id, type, raw_input, status, created_at
-FROM ingestion_jobs
-WHERE id = $1`
-
-func (q *Queries) GetIngestionJob(ctx context.Context, id uuid.UUID) (IngestionJob, error) {
-	row := q.db.QueryRowContext(ctx, getIngestionJob, id)
-	var i IngestionJob
-	err := row.Scan(
-		&i.ID,
-		&i.Type,
-		&i.RawInput,
-		&i.Status,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const updateIngestionJobStatus = `-- name: UpdateIngestionJobStatus :one
-UPDATE ingestion_jobs
-SET status = $2
-WHERE id = $1
-RETURNING id, type, raw_input, status, created_at`
-
-// UpdateIngestionJobStatusParams are the parameters for UpdateIngestionJobStatus.
-type UpdateIngestionJobStatusParams struct {
-	ID     uuid.UUID
-	Status string
-}
-
-func (q *Queries) UpdateIngestionJobStatus(ctx context.Context, arg UpdateIngestionJobStatusParams) (IngestionJob, error) {
-	row := q.db.QueryRowContext(ctx, updateIngestionJobStatus, arg.ID, arg.Status)
-	var i IngestionJob
-	err := row.Scan(
-		&i.ID,
-		&i.Type,
-		&i.RawInput,
-		&i.Status,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const createStagedItem = `-- name: CreateStagedItem :one
 INSERT INTO staged_items (job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review`
+RETURNING id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review
+`
 
-// CreateStagedItemParams are the parameters for CreateStagedItem.
 type CreateStagedItemParams struct {
 	JobID        uuid.UUID
-	IngredientID NullUUID
+	IngredientID uuid.NullUUID
 	RawText      string
 	Quantity     float64
 	Unit         string
@@ -118,11 +75,53 @@ func (q *Queries) CreateStagedItem(ctx context.Context, arg CreateStagedItemPara
 	return i, err
 }
 
+const getIngestionJob = `-- name: GetIngestionJob :one
+SELECT id, type, raw_input, status, created_at
+FROM ingestion_jobs
+WHERE id = $1
+`
+
+func (q *Queries) GetIngestionJob(ctx context.Context, id uuid.UUID) (IngestionJob, error) {
+	row := q.db.QueryRowContext(ctx, getIngestionJob, id)
+	var i IngestionJob
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.RawInput,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getStagedItem = `-- name: GetStagedItem :one
+SELECT id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review
+FROM staged_items
+WHERE id = $1
+`
+
+func (q *Queries) GetStagedItem(ctx context.Context, id uuid.UUID) (StagedItem, error) {
+	row := q.db.QueryRowContext(ctx, getStagedItem, id)
+	var i StagedItem
+	err := row.Scan(
+		&i.ID,
+		&i.JobID,
+		&i.IngredientID,
+		&i.RawText,
+		&i.Quantity,
+		&i.Unit,
+		&i.Confidence,
+		&i.NeedsReview,
+	)
+	return i, err
+}
+
 const listStagedItemsByJob = `-- name: ListStagedItemsByJob :many
 SELECT id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review
 FROM staged_items
 WHERE job_id = $1
-ORDER BY raw_text`
+ORDER BY raw_text
+`
 
 func (q *Queries) ListStagedItemsByJob(ctx context.Context, jobID uuid.UUID) ([]StagedItem, error) {
 	rows, err := q.db.QueryContext(ctx, listStagedItemsByJob, jobID)
@@ -156,23 +155,27 @@ func (q *Queries) ListStagedItemsByJob(ctx context.Context, jobID uuid.UUID) ([]
 	return items, nil
 }
 
-const getStagedItem = `-- name: GetStagedItem :one
-SELECT id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review
-FROM staged_items
-WHERE id = $1`
+const updateIngestionJobStatus = `-- name: UpdateIngestionJobStatus :one
+UPDATE ingestion_jobs
+SET status = $2
+WHERE id = $1
+RETURNING id, type, raw_input, status, created_at
+`
 
-func (q *Queries) GetStagedItem(ctx context.Context, id uuid.UUID) (StagedItem, error) {
-	row := q.db.QueryRowContext(ctx, getStagedItem, id)
-	var i StagedItem
+type UpdateIngestionJobStatusParams struct {
+	ID     uuid.UUID
+	Status string
+}
+
+func (q *Queries) UpdateIngestionJobStatus(ctx context.Context, arg UpdateIngestionJobStatusParams) (IngestionJob, error) {
+	row := q.db.QueryRowContext(ctx, updateIngestionJobStatus, arg.ID, arg.Status)
+	var i IngestionJob
 	err := row.Scan(
 		&i.ID,
-		&i.JobID,
-		&i.IngredientID,
-		&i.RawText,
-		&i.Quantity,
-		&i.Unit,
-		&i.Confidence,
-		&i.NeedsReview,
+		&i.Type,
+		&i.RawInput,
+		&i.Status,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -183,12 +186,12 @@ SET ingredient_id = $2,
     quantity      = $3,
     unit          = $4
 WHERE id = $1
-RETURNING id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review`
+RETURNING id, job_id, ingredient_id, raw_text, quantity, unit, confidence, needs_review
+`
 
-// UpdateStagedItemParams are the parameters for UpdateStagedItem.
 type UpdateStagedItemParams struct {
 	ID           uuid.UUID
-	IngredientID NullUUID
+	IngredientID uuid.NullUUID
 	Quantity     float64
 	Unit         string
 }
