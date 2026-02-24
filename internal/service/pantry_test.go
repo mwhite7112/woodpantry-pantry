@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mwhite7112/woodpantry-pantry/internal/db"
-	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mwhite7112/woodpantry-pantry/internal/db"
+	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 )
 
 func TestListItems_ReturnsItems(t *testing.T) {

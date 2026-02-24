@@ -11,13 +11,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/logging"
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
 )
 
 // NewRouter wires all routes.
-func NewRouter(pantry *service.PantryService, ingest *service.IngestService, dict *clients.DictionaryClient) http.Handler {
+func NewRouter(
+	pantry *service.PantryService,
+	ingest *service.IngestService,
+	dict *clients.DictionaryClient,
+) http.Handler {
 	r := chi.NewRouter()
 	r.Use(logging.Middleware)
 	r.Use(middleware.Recoverer)

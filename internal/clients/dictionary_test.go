@@ -23,7 +23,7 @@ func TestResolve_Success200(t *testing.T) {
 
 		var body map[string]string
 		err := json.NewDecoder(r.Body).Decode(&body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, "garlic", body["name"])
 
 		w.Header().Set("Content-Type", "application/json")
@@ -45,7 +45,7 @@ func TestResolve_Success200(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ingredientID, result.Ingredient.ID)
 	assert.Equal(t, "garlic", result.Ingredient.Name)
-	assert.Equal(t, 0.95, result.Confidence)
+	assert.InDelta(t, 0.95, result.Confidence, 0.001)
 	assert.False(t, result.Created)
 }
 

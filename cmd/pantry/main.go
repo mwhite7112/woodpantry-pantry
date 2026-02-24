@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/lib/pq"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/api"
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
@@ -22,43 +24,44 @@ import (
 func main() {
 	logging.Setup()
 
+	if err := run(); err != nil {
+		slog.Error("fatal", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	port := envOrDefault("PORT", "8080")
 
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
-		slog.Error("DB_URL is required")
-		os.Exit(1)
+		return fmt.Errorf("DB_URL is required")
 	}
 
 	dictURL := os.Getenv("DICTIONARY_URL")
 	if dictURL == "" {
-		slog.Error("DICTIONARY_URL is required")
-		os.Exit(1)
+		return fmt.Errorf("DICTIONARY_URL is required")
 	}
 
 	openaiKey := os.Getenv("OPENAI_API_KEY")
 	if openaiKey == "" {
-		slog.Error("OPENAI_API_KEY is required")
-		os.Exit(1)
+		return fmt.Errorf("OPENAI_API_KEY is required")
 	}
 
 	extractModel := envOrDefault("EXTRACT_MODEL", "gpt-5-mini")
 
 	sqlDB, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		slog.Error("open database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("open database: %w", err)
 	}
 	defer sqlDB.Close()
 
 	if err := sqlDB.Ping(); err != nil {
-		slog.Error("connect to database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connect to database: %w", err)
 	}
 
 	if err := runMigrations(sqlDB); err != nil {
-		slog.Error("migrations", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("migrations: %w", err)
 	}
 
 	queries := db.New(sqlDB)
@@ -74,9 +77,10 @@ func main() {
 	addr := fmt.Sprintf(":%s", port)
 	slog.Info("pantry service listening", "addr", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
-		slog.Error("server error", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("server error: %w", err)
 	}
+
+	return nil
 }
 
 func runMigrations(sqlDB *sql.DB) error {
@@ -92,7 +96,7 @@ func runMigrations(sqlDB *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("create migrator: %w", err)
 	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	return nil

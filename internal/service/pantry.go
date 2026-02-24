@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/google/uuid"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
 )
 
@@ -28,7 +29,13 @@ func (s *PantryService) ListItems(ctx context.Context) ([]db.PantryItem, error) 
 	return items, nil
 }
 
-func (s *PantryService) UpsertItem(ctx context.Context, ingredientID uuid.UUID, quantity float64, unit string, expiresAt sql.NullTime) (db.PantryItem, error) {
+func (s *PantryService) UpsertItem(
+	ctx context.Context,
+	ingredientID uuid.UUID,
+	quantity float64,
+	unit string,
+	expiresAt sql.NullTime,
+) (db.PantryItem, error) {
 	return s.q.UpsertPantryItem(ctx, db.UpsertPantryItemParams{
 		IngredientID: ingredientID,
 		Quantity:     quantity,

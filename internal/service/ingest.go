@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
 )
 
@@ -141,7 +142,12 @@ type OverrideItem struct {
 // ConfirmJob commits staged items to the pantry. Optional overrides let the
 // caller adjust quantity, unit, or ingredient_id before commit. Items without a
 // resolved ingredient_id are skipped with a warning.
-func (s *IngestService) ConfirmJob(ctx context.Context, jobID uuid.UUID, pantry *PantryService, overrides []OverrideItem) error {
+func (s *IngestService) ConfirmJob(
+	ctx context.Context,
+	jobID uuid.UUID,
+	pantry *PantryService,
+	overrides []OverrideItem,
+) error {
 	job, err := s.q.GetIngestionJob(ctx, jobID)
 	if err != nil {
 		return err

@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
 	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 // stubExtractor is a no-op LLM extractor for handler tests where we don't
