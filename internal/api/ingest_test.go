@@ -84,7 +84,7 @@ func TestPostIngest_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusAccepted, rec.Code)
 
-	var result map[string]interface{}
+	var result map[string]any
 	err := json.Unmarshal(rec.Body.Bytes(), &result)
 	require.NoError(t, err)
 	assert.Equal(t, jobID.String(), result["job_id"])
@@ -147,12 +147,12 @@ func TestGetIngestJob_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var result map[string]interface{}
+	var result map[string]any
 	err := json.Unmarshal(rec.Body.Bytes(), &result)
 	require.NoError(t, err)
 	assert.Equal(t, jobID.String(), result["job_id"])
 	assert.Equal(t, "staged", result["status"])
-	items, ok := result["items"].([]interface{})
+	items, ok := result["items"].([]any)
 	require.True(t, ok)
 	assert.Len(t, items, 1)
 }

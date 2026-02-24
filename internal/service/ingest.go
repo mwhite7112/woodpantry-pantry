@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -38,11 +39,17 @@ type OpenAIExtractor struct {
 	httpClient *http.Client
 }
 
+const (
+	openAIClientTimeout       = 60 * time.Second
+	processJobTimeout         = 90 * time.Second
+	confidenceReviewThreshold = 0.7
+)
+
 func NewOpenAIExtractor(apiKey, model string) *OpenAIExtractor {
 	return &OpenAIExtractor{
 		apiKey:     apiKey,
 		model:      model,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: &http.Client{Timeout: openAIClientTimeout},
 	}
 }
 
@@ -59,7 +66,7 @@ func (s *IngestService) CreateJob(ctx context.Context, jobType, rawInput string)
 // error. Phase 2+ will replace this with a RabbitMQ consumer.
 func (s *IngestService) ProcessJobAsync(jobID uuid.UUID, rawInput string) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), processJobTimeout)
 		defer cancel()
 
 		if err := s.processJob(ctx, jobID, rawInput); err != nil {
@@ -73,22 +80,23 @@ func (s *IngestService) ProcessJobAsync(jobID uuid.UUID, rawInput string) {
 }
 
 func (s *IngestService) processJob(ctx context.Context, jobID uuid.UUID, rawInput string) error {
-	slog.Info("LLM extraction starting", "job_id", jobID, "input_len", len(rawInput))
+	log := slog.Default()
+	log.InfoContext(ctx, "LLM extraction starting", "job_id", jobID, "input_len", len(rawInput))
 
 	extracted, err := s.extractor.Extract(ctx, rawInput)
 	if err != nil {
 		return fmt.Errorf("llm extraction: %w", err)
 	}
 
-	slog.Info("LLM extraction complete", "job_id", jobID, "items", len(extracted.Items))
+	log.InfoContext(ctx, "LLM extraction complete", "job_id", jobID, "items", len(extracted.Items))
 
 	for _, item := range extracted.Items {
 		var ingredientID uuid.NullUUID
-		needsReview := item.Confidence < 0.7
+		needsReview := item.Confidence < confidenceReviewThreshold
 
 		result, resolveErr := s.dictionary.Resolve(ctx, item.Name)
 		if resolveErr != nil {
-			slog.Warn("dictionary resolve failed", "job_id", jobID, "name", item.Name, "error", resolveErr)
+			log.WarnContext(ctx, "dictionary resolve failed", "job_id", jobID, "name", item.Name, "error", resolveErr)
 			needsReview = true
 		} else {
 			ingredientID = uuid.NullUUID{UUID: result.Ingredient.ID, Valid: true}
@@ -184,7 +192,11 @@ func (s *IngestService) ConfirmJob(
 		}
 
 		if !ingredientID.Valid {
-			slog.Warn("skipping staged item: no ingredient_id resolved", "item_id", item.ID, "raw_text", item.RawText)
+			slog.Default().WarnContext(ctx,
+				"skipping staged item: no ingredient_id resolved",
+				"item_id", item.ID,
+				"raw_text", item.RawText,
+			)
 			continue
 		}
 
@@ -273,7 +285,7 @@ func (e *OpenAIExtractor) Extract(ctx context.Context, text string) (*Extraction
 		return nil, fmt.Errorf("openai response decode: %w", err)
 	}
 	if len(chatResp.Choices) == 0 {
-		return nil, fmt.Errorf("openai returned no choices")
+		return nil, errors.New("openai returned no choices")
 	}
 
 	var extracted ExtractionResponse

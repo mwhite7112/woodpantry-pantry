@@ -35,17 +35,17 @@ func run() error {
 
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
-		return fmt.Errorf("DB_URL is required")
+		return errors.New("DB_URL is required")
 	}
 
 	dictURL := os.Getenv("DICTIONARY_URL")
 	if dictURL == "" {
-		return fmt.Errorf("DICTIONARY_URL is required")
+		return errors.New("DICTIONARY_URL is required")
 	}
 
 	openaiKey := os.Getenv("OPENAI_API_KEY")
 	if openaiKey == "" {
-		return fmt.Errorf("OPENAI_API_KEY is required")
+		return errors.New("OPENAI_API_KEY is required")
 	}
 
 	extractModel := envOrDefault("EXTRACT_MODEL", "gpt-5-mini")
@@ -64,8 +64,10 @@ func run() error {
 		return fmt.Errorf("migrations: %w", err)
 	}
 
+	const httpClientTimeout = 30 * time.Second
+
 	queries := db.New(sqlDB)
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: httpClientTimeout}
 
 	pantry := service.NewPantryService(queries)
 	dict := clients.NewDictionaryClient(dictURL, httpClient)
