@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
 )
 
@@ -22,11 +23,11 @@ func handleIngest(ingest *service.IngestService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req ingestRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			jsonError(w, "invalid request body", http.StatusBadRequest)
+			jsonError(r.Context(), w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		if req.Content == "" {
-			jsonError(w, "content is required", http.StatusBadRequest)
+			jsonError(r.Context(), w, "content is required", http.StatusBadRequest)
 			return
 		}
 		jobType := req.Type
@@ -36,7 +37,7 @@ func handleIngest(ingest *service.IngestService) http.HandlerFunc {
 
 		job, err := ingest.CreateJob(r.Context(), jobType, req.Content)
 		if err != nil {
-			jsonError(w, "failed to create ingest job", http.StatusInternalServerError, err)
+			jsonError(r.Context(), w, "failed to create ingest job", http.StatusInternalServerError, err)
 			return
 		}
 
@@ -57,23 +58,23 @@ func handleGetJob(ingest *service.IngestService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		jobID, err := uuid.Parse(chi.URLParam(r, "job_id"))
 		if err != nil {
-			jsonError(w, "invalid job_id", http.StatusBadRequest)
+			jsonError(r.Context(), w, "invalid job_id", http.StatusBadRequest)
 			return
 		}
 
 		job, err := ingest.GetJob(r.Context(), jobID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				jsonError(w, "job not found", http.StatusNotFound)
+				jsonError(r.Context(), w, "job not found", http.StatusNotFound)
 				return
 			}
-			jsonError(w, "failed to get job", http.StatusInternalServerError, err)
+			jsonError(r.Context(), w, "failed to get job", http.StatusInternalServerError, err)
 			return
 		}
 
 		items, err := ingest.ListStagedItems(r.Context(), jobID)
 		if err != nil {
-			jsonError(w, "failed to get staged items", http.StatusInternalServerError, err)
+			jsonError(r.Context(), w, "failed to get staged items", http.StatusInternalServerError, err)
 			return
 		}
 
@@ -95,7 +96,7 @@ func handleConfirmJob(pantry *service.PantryService, ingest *service.IngestServi
 	return func(w http.ResponseWriter, r *http.Request) {
 		jobID, err := uuid.Parse(chi.URLParam(r, "job_id"))
 		if err != nil {
-			jsonError(w, "invalid job_id", http.StatusBadRequest)
+			jsonError(r.Context(), w, "invalid job_id", http.StatusBadRequest)
 			return
 		}
 
@@ -103,17 +104,17 @@ func handleConfirmJob(pantry *service.PantryService, ingest *service.IngestServi
 		// body is optional — decode only if present
 		if r.ContentLength != 0 {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				jsonError(w, "invalid request body", http.StatusBadRequest)
+				jsonError(r.Context(), w, "invalid request body", http.StatusBadRequest)
 				return
 			}
 		}
 
 		if err := ingest.ConfirmJob(r.Context(), jobID, pantry, req.Overrides); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				jsonError(w, "job not found", http.StatusNotFound)
+				jsonError(r.Context(), w, "job not found", http.StatusNotFound)
 				return
 			}
-			jsonError(w, err.Error(), http.StatusUnprocessableEntity)
+			jsonError(r.Context(), w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
 

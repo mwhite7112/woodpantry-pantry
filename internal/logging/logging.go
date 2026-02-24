@@ -25,9 +25,10 @@ func Setup() {
 	})))
 }
 
-// responseWriter wraps http.ResponseWriter to capture the status code.
+// responseWriter wraps [http.ResponseWriter] to capture the status code.
 type responseWriter struct {
 	http.ResponseWriter
+
 	status int
 }
 
@@ -58,9 +59,9 @@ func Middleware(next http.Handler) http.Handler {
 		}
 
 		switch {
-		case rw.status >= 500:
+		case rw.status >= http.StatusInternalServerError:
 			slog.LogAttrs(r.Context(), slog.LevelError, "request", attrs...)
-		case rw.status >= 400:
+		case rw.status >= http.StatusBadRequest:
 			slog.LogAttrs(r.Context(), slog.LevelWarn, "request", attrs...)
 		default:
 			slog.LogAttrs(r.Context(), slog.LevelInfo, "request", attrs...)

@@ -1,0 +1,157 @@
+# Blocking lint config — PR-gating checks that must pass before merge.
+# Only correctness/safety linters. Style and quality checks live in
+# .golangci-advisory.yaml and run as non-blocking annotations.
+
+version: "2"
+
+issues:
+  max-same-issues: 50
+
+formatters:
+  enable:
+    - goimports
+    - golines
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/mwhite7112
+    golines:
+      max-len: 120
+
+linters:
+  enable:
+    - asasalint    # pass []any as any in variadic func(...any)
+    - asciicheck   # non-ASCII identifiers
+    - bidichk      # dangerous unicode character sequences
+    - bodyclose    # HTTP response body not closed
+    - canonicalheader # non-canonical net/http.Header keys
+    - copyloopvar  # loop variable copy issues (Go 1.22+)
+    - depguard     # deprecated/banned package imports
+    - durationcheck # two durations multiplied together
+    - errcheck     # unchecked errors
+    - errname      # sentinel error naming
+    - errorlint    # error wrapping issues
+    - exhaustive   # non-exhaustive switch/map
+    - exptostd     # x/exp functions replaceable by std
+    - fatcontext   # nested contexts in loops
+    - forbidigo    # banned function calls
+    - gocheckcompilerdirectives # invalid //go: directives
+    - gochecksumtype # sum type exhaustiveness
+    - gocritic     # bugs, performance, and style diagnostics
+    - gomoddirectives # bad go.mod directives
+    - gosec        # security problems
+    - govet        # suspicious constructs
+    - ineffassign  # unused assignments
+    - intrange     # integer range simplification
+    - loggercheck  # structured logger key-value pairs
+    - makezero     # non-zero initial slice length
+    - mirror       # wrong bytes/strings mirror usage
+    #- musttag     # advisory-only: sqlc-generated structs lack json tags by default
+    - nilerr       # nil error when error is checked
+    - nilnesserr   # nil error with different nil value
+    - noctx        # HTTP request without context
+    - nolintlint   # ill-formed nolint directives
+    - nosprintfhostport # misuse of Sprintf for host:port
+    - predeclared  # shadow of predeclared identifiers
+    - protogetter  # direct proto field reads
+    - reassign     # package variable reassignment
+    - rowserrcheck # unchecked sql.Rows.Err
+    - spancheck    # OpenTelemetry span mistakes
+    - sqlclosecheck # unclosed sql.Rows/Stmt
+    - staticcheck  # advanced static analysis
+    - testifylint  # testify usage issues
+    - tparallel    # incorrect t.Parallel usage
+    - unconvert    # unnecessary type conversions
+    - unparam      # unused function parameters
+    - unqueryvet   # SELECT * in SQL queries
+    - unused       # unused code
+    - usestdlibvars # stdlib vars/constants
+    - usetesting   # functions with testing replacements
+    - wastedassign # wasted assignments
+
+  settings:
+    depguard:
+      rules:
+        "deprecated":
+          files: ["$all"]
+          deny:
+            - pkg: github.com/golang/protobuf
+              desc: Use google.golang.org/protobuf instead
+            - pkg: github.com/satori/go.uuid
+              desc: Use github.com/google/uuid instead
+            - pkg: github.com/gofrs/uuid$
+              desc: Use github.com/gofrs/uuid/v5 or later
+        "non-test files":
+          files: ["!$test"]
+          deny:
+            - pkg: math/rand$
+              desc: Use math/rand/v2 instead
+        "non-main files":
+          files: ["!**/main.go"]
+          deny:
+            - pkg: log$
+              desc: Use log/slog instead
+
+    errcheck:
+      check-type-assertions: true
+
+    exhaustive:
+      check: [switch, map]
+
+    gochecksumtype:
+      default-signifies-exhaustive: false
+
+    gocritic:
+      settings:
+        captLocal:
+          paramsOnly: false
+        underef:
+          skipRecvDeref: false
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+
+    nolintlint:
+      allow-no-explanation: [errcheck, funlen, gocognit, golines]
+      require-explanation: true
+      require-specific: true
+
+    reassign:
+      patterns: [".*"]
+
+    rowserrcheck:
+      packages: [github.com/jmoiron/sqlx]
+
+    staticcheck:
+      checks: [all, -ST1000, -ST1016, -QF1008]
+
+    usetesting:
+      os-temp-dir: true
+
+  exclusions:
+    warn-unused: true
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: '_test\.go'
+        linters: [bodyclose, dupl, errcheck, funlen, goconst, gosec, noctx, wrapcheck]
+      # gosec false positives for this project
+      - linters: [gosec]
+        text: 'G104'
+        path: 'internal/api/'
+      - linters: [gosec]
+        text: 'G706'
+      - linters: [gosec]
+        text: 'G704'
+      - linters: [gosec]
+        text: 'G114'
+      # noctx: sqlDB.Ping at startup has no context available
+      - linters: [noctx]
+        path: '^cmd/'
+      # gocritic: ifElseChain is a style preference, not a correctness issue
+      - linters: [gocritic]
+        text: 'ifElseChain'

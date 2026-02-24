@@ -37,7 +37,12 @@ func (c *DictionaryClient) Resolve(ctx context.Context, rawName string) (Resolve
 		return ResolveResult{}, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/ingredients/resolve", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/ingredients/resolve",
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		return ResolveResult{}, err
 	}

@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
 	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 func setupRouter(t *testing.T) (*mocks.MockQuerier, http.Handler) {
@@ -163,7 +164,11 @@ func TestPostPantryItems_MissingFields(t *testing.T) {
 		want string
 	}{
 		{"missing name and ingredient_id", `{"quantity":1,"unit":"cup"}`, "name or ingredient_id is required"},
-		{"missing quantity", `{"ingredient_id":"` + uuid.New().String() + `","quantity":0,"unit":"cup"}`, "quantity must be positive"},
+		{
+			"missing quantity",
+			`{"ingredient_id":"` + uuid.New().String() + `","quantity":0,"unit":"cup"}`,
+			"quantity must be positive",
+		},
 		{"missing unit", `{"ingredient_id":"` + uuid.New().String() + `","quantity":1,"unit":""}`, "unit is required"},
 	}
 

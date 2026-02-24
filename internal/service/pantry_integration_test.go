@@ -8,10 +8,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mwhite7112/woodpantry-pantry/internal/db"
-	"github.com/mwhite7112/woodpantry-pantry/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mwhite7112/woodpantry-pantry/internal/db"
+	"github.com/mwhite7112/woodpantry-pantry/internal/testutil"
 )
 
 func TestPantry_UpsertIdempotent(t *testing.T) {

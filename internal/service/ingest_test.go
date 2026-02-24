@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
-	"github.com/mwhite7112/woodpantry-pantry/internal/db"
-	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
+	"github.com/mwhite7112/woodpantry-pantry/internal/db"
+	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 )
 
 func TestProcessJob_Success(t *testing.T) {
@@ -122,7 +123,9 @@ func TestProcessJob_DictionaryFailureSetsNeedsReview(t *testing.T) {
 	}, nil)
 
 	// Dictionary fails
-	mockDict.EXPECT().Resolve(mock.Anything, "cilantro").Return(clients.ResolveResult{}, errors.New("connection refused"))
+	mockDict.EXPECT().
+		Resolve(mock.Anything, "cilantro").
+		Return(clients.ResolveResult{}, errors.New("connection refused"))
 
 	// Staged item created with needs_review=true and empty ingredient_id
 	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
