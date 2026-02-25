@@ -174,6 +174,8 @@ func (s *IngestService) ConfirmJob(
 		overrideMap[o.StagedItemID] = o
 	}
 
+	changedItemIDs := make([]uuid.UUID, 0, len(staged))
+
 	for _, item := range staged {
 		ingredientID := item.IngredientID
 		quantity := item.Quantity
@@ -200,16 +202,26 @@ func (s *IngestService) ConfirmJob(
 			continue
 		}
 
-		if _, err := pantry.UpsertItem(ctx, ingredientID.UUID, quantity, unit, sql.NullTime{}); err != nil {
+		upserted, err := pantry.UpsertItemNoPublish(ctx, ingredientID.UUID, quantity, unit, sql.NullTime{})
+		if err != nil {
 			return fmt.Errorf("upsert pantry item for staged item %s: %w", item.ID, err)
 		}
+		changedItemIDs = append(changedItemIDs, upserted.ID)
 	}
 
 	_, err = s.q.UpdateIngestionJobStatus(ctx, db.UpdateIngestionJobStatusParams{
 		ID:     jobID,
 		Status: "confirmed",
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	if len(changedItemIDs) > 0 {
+		pantry.PublishUpdated(ctx, changedItemIDs)
+	}
+
+	return nil
 }
 
 // --- LLM extraction ---

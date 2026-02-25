@@ -85,6 +85,17 @@ POST /pantry/ingest/:job_id/confirm
 | `pantry.updated` | Publishes | After any stock change — item add, update, delete, ingest confirm, reset |
 | `pantry.ingest.requested` | Subscribes | Triggers ingest pipeline processing (Phase 2+) |
 
+`pantry.updated` payload:
+
+```json
+{
+  "timestamp": "2026-02-25T12:34:56Z",
+  "changed_item_ids": ["uuid"]
+}
+```
+
+Publishing is best-effort. If `RABBITMQ_URL` is unset or RabbitMQ is unavailable, pantry HTTP endpoints still succeed and the service logs a warning.
+
 ## Configuration
 
 | Env Var | Default | Description |
@@ -94,7 +105,7 @@ POST /pantry/ingest/:job_id/confirm
 | `DICTIONARY_URL` | required | Ingredient Dictionary service base URL |
 | `OPENAI_API_KEY` | required | OpenAI API key for text extraction |
 | `EXTRACT_MODEL` | `gpt-5-mini` | OpenAI model for extraction |
-| `RABBITMQ_URL` | optional | Enables event publishing (Phase 2+) |
+| `RABBITMQ_URL` | optional | Enables `pantry.updated` publishing; if unset/unreachable, publishing is skipped |
 | `LOG_LEVEL` | `info` | Log level |
 
 ## Development

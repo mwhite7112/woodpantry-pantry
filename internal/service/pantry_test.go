@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -14,6 +15,17 @@ import (
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
 	"github.com/mwhite7112/woodpantry-pantry/internal/mocks"
 )
+
+type stubUpdatePublisher struct {
+	err       error
+	published [][]uuid.UUID
+}
+
+func (s *stubUpdatePublisher) PublishPantryUpdated(_ context.Context, ids []uuid.UUID) error {
+	cloned := append([]uuid.UUID(nil), ids...)
+	s.published = append(s.published, cloned)
+	return s.err
+}
 
 func TestListItems_ReturnsItems(t *testing.T) {
 	t.Parallel()
@@ -117,4 +129,67 @@ func TestReset_DelegatesToDeleteAllPantryItems(t *testing.T) {
 
 	err := svc.Reset(context.Background())
 	require.NoError(t, err)
+}
+
+func TestUpsertItem_PublishFailureDoesNotFailRequest(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	pub := &stubUpdatePublisher{err: errors.New("rabbitmq unavailable")}
+	svc := NewPantryService(mockQ, pub)
+
+	ingredientID := uuid.New()
+	itemID := uuid.New()
+	now := time.Now()
+
+	mockQ.EXPECT().UpsertPantryItem(mock.Anything, db.UpsertPantryItemParams{
+		IngredientID: ingredientID,
+		Quantity:     2.0,
+		Unit:         "cup",
+		ExpiresAt:    sql.NullTime{},
+	}).Return(db.PantryItem{
+		ID:           itemID,
+		IngredientID: ingredientID,
+		Quantity:     2.0,
+		Unit:         "cup",
+		AddedAt:      now,
+		UpdatedAt:    now,
+	}, nil)
+
+	item, err := svc.UpsertItem(context.Background(), ingredientID, 2.0, "cup", sql.NullTime{})
+	require.NoError(t, err)
+	assert.Equal(t, itemID, item.ID)
+	require.Len(t, pub.published, 1)
+	assert.Equal(t, []uuid.UUID{itemID}, pub.published[0])
+}
+
+func TestDeleteItem_PublishFailureDoesNotFailRequest(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	pub := &stubUpdatePublisher{err: errors.New("rabbitmq unavailable")}
+	svc := NewPantryService(mockQ, pub)
+
+	itemID := uuid.New()
+	mockQ.EXPECT().DeletePantryItem(mock.Anything, itemID).Return(nil)
+
+	err := svc.DeleteItem(context.Background(), itemID)
+	require.NoError(t, err)
+	require.Len(t, pub.published, 1)
+	assert.Equal(t, []uuid.UUID{itemID}, pub.published[0])
+}
+
+func TestReset_PublishFailureDoesNotFailRequest(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	pub := &stubUpdatePublisher{err: errors.New("rabbitmq unavailable")}
+	svc := NewPantryService(mockQ, pub)
+
+	mockQ.EXPECT().DeleteAllPantryItems(mock.Anything).Return(nil)
+
+	err := svc.Reset(context.Background())
+	require.NoError(t, err)
+	require.Len(t, pub.published, 1)
+	assert.Empty(t, pub.published[0])
 }
