@@ -9,6 +9,7 @@ All pantry items reference canonical Ingredient Dictionary IDs — raw ingredien
 All ingest flows (text blob, SMS) follow the **staged commit pattern**: raw input in → LLM extraction → staged items for review → user confirms → committed to pantry state.
 
 After any stock change, the Pantry Service publishes a `pantry.updated` event (Phase 2+) so downstream consumers like the Matching Service can invalidate caches.
+Publishing is best-effort: if `RABBITMQ_URL` is unset or RabbitMQ is unavailable, API operations still succeed and publish failures are logged.
 
 ## Technology
 
@@ -90,7 +91,7 @@ staged_items
 | `DICTIONARY_URL` | required | Ingredient Dictionary service base URL |
 | `OPENAI_API_KEY` | required | OpenAI API key for text extraction |
 | `EXTRACT_MODEL` | `gpt-5-mini` | OpenAI model for extraction |
-| `RABBITMQ_URL` | optional | Enables event publishing and queue subscription (Phase 2+) |
+| `RABBITMQ_URL` | optional | Enables `pantry.updated` publishing and queue subscription (Phase 2+); unset/unreachable means publish is skipped |
 | `LOG_LEVEL` | `info` | Log level |
 
 ## Directory Layout

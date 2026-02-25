@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -12,11 +13,13 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 
 	"github.com/mwhite7112/woodpantry-pantry/internal/api"
 	"github.com/mwhite7112/woodpantry-pantry/internal/clients"
 	"github.com/mwhite7112/woodpantry-pantry/internal/db"
+	"github.com/mwhite7112/woodpantry-pantry/internal/events"
 	"github.com/mwhite7112/woodpantry-pantry/internal/logging"
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
 )
@@ -49,6 +52,7 @@ func run() error {
 	}
 
 	extractModel := envOrDefault("EXTRACT_MODEL", "gpt-5-mini")
+	rabbitMQURL := os.Getenv("RABBITMQ_URL")
 
 	sqlDB, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -69,7 +73,13 @@ func run() error {
 	queries := db.New(sqlDB)
 	httpClient := &http.Client{Timeout: httpClientTimeout}
 
-	pantry := service.NewPantryService(queries)
+	pantryPublisher, err := setupPantryUpdatedPublisher(rabbitMQURL)
+	if err != nil {
+		return err
+	}
+	defer pantryPublisher.Close()
+
+	pantry := service.NewPantryService(queries, pantryPublisher)
 	dict := clients.NewDictionaryClient(dictURL, httpClient)
 	extractor := service.NewOpenAIExtractor(openaiKey, extractModel)
 	ingest := service.NewIngestService(queries, dict, extractor)
@@ -82,6 +92,37 @@ func run() error {
 		return fmt.Errorf("server error: %w", err)
 	}
 
+	return nil
+}
+
+type pantryPublisher interface {
+	service.UpdatePublisher
+	Close() error
+}
+
+func setupPantryUpdatedPublisher(rabbitMQURL string) (pantryPublisher, error) {
+	if rabbitMQURL == "" {
+		slog.Info("RABBITMQ_URL not set; pantry.updated publishing disabled")
+		return nopCloserPublisher{}, nil
+	}
+
+	pub, err := events.NewPantryUpdatedPublisher(rabbitMQURL)
+	if err != nil {
+		slog.Warn("failed to initialize RabbitMQ publisher; pantry.updated publishing disabled", "error", err)
+		return nopCloserPublisher{}, nil
+	}
+
+	slog.Info("RabbitMQ pantry.updated publisher enabled")
+	return pub, nil
+}
+
+type nopCloserPublisher struct{}
+
+func (nopCloserPublisher) PublishPantryUpdated(_ context.Context, _ []uuid.UUID) error {
+	return nil
+}
+
+func (nopCloserPublisher) Close() error {
 	return nil
 }
 
