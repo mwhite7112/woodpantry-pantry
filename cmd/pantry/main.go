@@ -73,10 +73,7 @@ func run() error {
 	queries := db.New(sqlDB)
 	httpClient := &http.Client{Timeout: httpClientTimeout}
 
-	pantryPublisher, err := setupPantryUpdatedPublisher(rabbitMQURL)
-	if err != nil {
-		return err
-	}
+	pantryPublisher := setupPantryUpdatedPublisher(rabbitMQURL)
 	defer pantryPublisher.Close()
 
 	pantry := service.NewPantryService(queries, pantryPublisher)
@@ -100,20 +97,20 @@ type pantryPublisher interface {
 	Close() error
 }
 
-func setupPantryUpdatedPublisher(rabbitMQURL string) (pantryPublisher, error) {
+func setupPantryUpdatedPublisher(rabbitMQURL string) pantryPublisher {
 	if rabbitMQURL == "" {
 		slog.Info("RABBITMQ_URL not set; pantry.updated publishing disabled")
-		return nopCloserPublisher{}, nil
+		return nopCloserPublisher{}
 	}
 
 	pub, err := events.NewPantryUpdatedPublisher(rabbitMQURL)
 	if err != nil {
 		slog.Warn("failed to initialize RabbitMQ publisher; pantry.updated publishing disabled", "error", err)
-		return nopCloserPublisher{}, nil
+		return nopCloserPublisher{}
 	}
 
 	slog.Info("RabbitMQ pantry.updated publisher enabled")
-	return pub, nil
+	return pub
 }
 
 type nopCloserPublisher struct{}
