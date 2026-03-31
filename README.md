@@ -12,6 +12,7 @@ Pantry Service for WoodPantry. Owns current inventory state — what ingredients
 | DELETE | `/pantry/items/:id` | Remove a pantry item |
 | POST | `/pantry/ingest` | Submit a grocery list text for LLM extraction and staging |
 | GET | `/pantry/ingest/:job_id` | Get ingest job status and staged items for review |
+| POST | `/pantry/ingest/:job_id/stage` | Accept externally-extracted items for staging (Phase 2+) |
 | POST | `/pantry/ingest/:job_id/confirm` | Commit staged items to pantry |
 | DELETE | `/pantry/reset` | Clear all pantry items |
 
@@ -50,6 +51,22 @@ Accepts a free-text grocery list. Triggers LLM extraction and returns a job ID.
     { "raw_text": "a thing of heavy cream", "ingredient_id": null, "quantity": 1, "unit": "carton", "confidence": 0.61, "needs_review": true }
   ]
 }
+```
+
+### POST /pantry/ingest/:job_id/stage
+
+Accepts pre-extracted items from the Ingestion Pipeline. The job must exist and be in `pending` status. After staging, the job status is updated to `staged`.
+
+```json
+// Request
+{
+  "items": [
+    { "raw_text": "2 lbs chicken breast", "ingredient_id": "uuid-or-null", "quantity": 2, "unit": "lb", "confidence": 0.97 }
+  ]
+}
+
+// Response
+{ "staged_count": 3, "needs_review_count": 1 }
 ```
 
 ### POST /pantry/ingest/:job_id/confirm

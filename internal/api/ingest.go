@@ -86,6 +86,44 @@ func handleGetJob(ingest *service.IngestService) http.HandlerFunc {
 	}
 }
 
+// --- POST /pantry/ingest/:job_id/stage ---
+
+type stageRequest struct {
+	Items []service.StageExternalItem `json:"items"`
+}
+
+func handleStageItems(ingest *service.IngestService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jobID, err := uuid.Parse(chi.URLParam(r, "job_id"))
+		if err != nil {
+			jsonError(r.Context(), w, "invalid job_id", http.StatusBadRequest)
+			return
+		}
+
+		var req stageRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(r.Context(), w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if len(req.Items) == 0 {
+			jsonError(r.Context(), w, "items array is required and must not be empty", http.StatusBadRequest)
+			return
+		}
+
+		result, err := ingest.StageExternalItems(r.Context(), jobID, req.Items)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				jsonError(r.Context(), w, "job not found", http.StatusNotFound)
+				return
+			}
+			jsonError(r.Context(), w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+
+		jsonOK(w, result)
+	}
+}
+
 // --- POST /pantry/ingest/:job_id/confirm ---
 
 type confirmRequest struct {

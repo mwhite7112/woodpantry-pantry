@@ -35,6 +35,7 @@ func NewRouter(
 	r.Delete("/pantry/items/{id}", handleDeleteItem(pantry))
 	r.Post("/pantry/ingest", handleIngest(ingest))
 	r.Get("/pantry/ingest/{job_id}", handleGetJob(ingest))
+	r.Post("/pantry/ingest/{job_id}/stage", handleStageItems(ingest))
 	r.Post("/pantry/ingest/{job_id}/confirm", handleConfirmJob(pantry, ingest))
 	r.Delete("/pantry/reset", handleReset(pantry))
 

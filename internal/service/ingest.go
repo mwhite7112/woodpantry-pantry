@@ -224,6 +224,76 @@ func (s *IngestService) ConfirmJob(
 	return nil
 }
 
+// StageExternalItem represents an item pre-extracted by the Ingestion Pipeline.
+type StageExternalItem struct {
+	RawText      string     `json:"raw_text"`
+	IngredientID *uuid.UUID `json:"ingredient_id"` // null if dictionary resolve failed
+	Quantity     float64    `json:"quantity"`
+	Unit         string     `json:"unit"`
+	Confidence   float64    `json:"confidence"`
+}
+
+// StageResult is returned after staging externally-extracted items.
+type StageResult struct {
+	StagedCount      int `json:"staged_count"`
+	NeedsReviewCount int `json:"needs_review_count"`
+}
+
+// StageExternalItems accepts pre-extracted items from the Ingestion Pipeline and
+// creates StagedItem rows for the given job. The job must exist and be in
+// "pending" status. After staging, the job status is updated to "staged".
+func (s *IngestService) StageExternalItems(
+	ctx context.Context,
+	jobID uuid.UUID,
+	items []StageExternalItem,
+) (StageResult, error) {
+	job, err := s.q.GetIngestionJob(ctx, jobID)
+	if err != nil {
+		return StageResult{}, err
+	}
+	if job.Status != "pending" {
+		return StageResult{}, fmt.Errorf("job %s has status %q, must be pending to stage", jobID, job.Status)
+	}
+
+	var result StageResult
+	for _, item := range items {
+		var ingredientID uuid.NullUUID
+		needsReview := item.Confidence < confidenceReviewThreshold
+
+		if item.IngredientID != nil {
+			ingredientID = uuid.NullUUID{UUID: *item.IngredientID, Valid: true}
+		} else {
+			needsReview = true
+		}
+
+		if _, err := s.q.CreateStagedItem(ctx, db.CreateStagedItemParams{
+			JobID:        jobID,
+			IngredientID: ingredientID,
+			RawText:      item.RawText,
+			Quantity:     item.Quantity,
+			Unit:         item.Unit,
+			Confidence:   item.Confidence,
+			NeedsReview:  needsReview,
+		}); err != nil {
+			return StageResult{}, fmt.Errorf("create staged item for %q: %w", item.RawText, err)
+		}
+
+		result.StagedCount++
+		if needsReview {
+			result.NeedsReviewCount++
+		}
+	}
+
+	if _, err := s.q.UpdateIngestionJobStatus(ctx, db.UpdateIngestionJobStatusParams{
+		ID:     jobID,
+		Status: "staged",
+	}); err != nil {
+		return StageResult{}, err
+	}
+
+	return result, nil
+}
+
 // --- LLM extraction ---
 
 type ExtractedItem struct {

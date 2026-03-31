@@ -35,6 +35,7 @@ Publishing is best-effort: if `RABBITMQ_URL` is unset or RabbitMQ is unavailable
 | DELETE | `/pantry/items/:id` | Remove a pantry item |
 | POST | `/pantry/ingest` | Submit text blob for LLM extraction and staging |
 | GET | `/pantry/ingest/:job_id` | Ingest job status + staged items for review |
+| POST | `/pantry/ingest/:job_id/stage` | Accept externally-extracted items for staging (Phase 2+) |
 | POST | `/pantry/ingest/:job_id/confirm` | Commit staged items; can edit before confirming |
 | DELETE | `/pantry/reset` | Clear all pantry items (before a full re-stock) |
 
