@@ -172,6 +172,171 @@ func TestGetIngestJob_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
+func TestPostStageJob_Success(t *testing.T) {
+	t.Parallel()
+
+	mockQ, router := setupIngestRouter(t)
+
+	jobID := uuid.New()
+	ingredientID := uuid.New()
+	now := time.Now()
+
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{
+		ID:        jobID,
+		Type:      "queue_ingest",
+		RawInput:  "2 cups flour",
+		Status:    "pending",
+		CreatedAt: now,
+	}, nil)
+
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{UUID: ingredientID, Valid: true},
+		RawText:      "2 cups flour",
+		Quantity:     2.0,
+		Unit:         "cup",
+		Confidence:   0.95,
+		NeedsReview:  false,
+	}).Return(db.StagedItem{}, nil)
+
+	mockQ.EXPECT().UpdateIngestionJobStatus(mock.Anything, db.UpdateIngestionJobStatusParams{
+		ID:     jobID,
+		Status: "staged",
+	}).Return(db.IngestionJob{}, nil)
+
+	body := `{"items":[{"raw_text":"2 cups flour","ingredient_id":"` + ingredientID.String() + `","quantity":2.0,"unit":"cup","confidence":0.95}]}`
+	req := httptest.NewRequest(http.MethodPost, "/pantry/ingest/"+jobID.String()+"/stage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var result service.StageItemsResult
+	err := json.Unmarshal(rec.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.StagedCount)
+	assert.Equal(t, 0, result.NeedsReviewCount)
+}
+
+func TestPostStageJob_InvalidJobID(t *testing.T) {
+	t.Parallel()
+
+	_, router := setupIngestRouter(t)
+
+	body := `{"items":[{"raw_text":"flour","quantity":1,"unit":"cup","confidence":0.9}]}`
+	req := httptest.NewRequest(http.MethodPost, "/pantry/ingest/not-a-uuid/stage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var errBody map[string]string
+	err := json.Unmarshal(rec.Body.Bytes(), &errBody)
+	require.NoError(t, err)
+	assert.Contains(t, errBody["error"], "invalid job_id")
+}
+
+func TestPostStageJob_JobNotFound(t *testing.T) {
+	t.Parallel()
+
+	mockQ, router := setupIngestRouter(t)
+
+	jobID := uuid.New()
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{}, sql.ErrNoRows)
+
+	body := `{"items":[{"raw_text":"flour","quantity":1,"unit":"cup","confidence":0.9}]}`
+	req := httptest.NewRequest(http.MethodPost, "/pantry/ingest/"+jobID.String()+"/stage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestPostStageJob_EmptyItems(t *testing.T) {
+	t.Parallel()
+
+	_, router := setupIngestRouter(t)
+
+	jobID := uuid.New()
+	body := `{"items":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/pantry/ingest/"+jobID.String()+"/stage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var errBody map[string]string
+	err := json.Unmarshal(rec.Body.Bytes(), &errBody)
+	require.NoError(t, err)
+	assert.Contains(t, errBody["error"], "items")
+}
+
+func TestPostStageJob_MixedResolvedUnresolved(t *testing.T) {
+	t.Parallel()
+
+	mockQ, router := setupIngestRouter(t)
+
+	jobID := uuid.New()
+	ingredientID := uuid.New()
+	now := time.Now()
+
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{
+		ID:        jobID,
+		Type:      "queue_ingest",
+		RawInput:  "test",
+		Status:    "pending",
+		CreatedAt: now,
+	}, nil)
+
+	// Resolved item
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{UUID: ingredientID, Valid: true},
+		RawText:      "2 cups flour",
+		Quantity:     2.0,
+		Unit:         "cup",
+		Confidence:   0.95,
+		NeedsReview:  false,
+	}).Return(db.StagedItem{}, nil)
+
+	// Unresolved item
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{},
+		RawText:      "mystery goo",
+		Quantity:     1.0,
+		Unit:         "piece",
+		Confidence:   0.4,
+		NeedsReview:  true,
+	}).Return(db.StagedItem{}, nil)
+
+	mockQ.EXPECT().UpdateIngestionJobStatus(mock.Anything, db.UpdateIngestionJobStatusParams{
+		ID:     jobID,
+		Status: "staged",
+	}).Return(db.IngestionJob{}, nil)
+
+	body := `{"items":[` +
+		`{"raw_text":"2 cups flour","ingredient_id":"` + ingredientID.String() + `","quantity":2.0,"unit":"cup","confidence":0.95},` +
+		`{"raw_text":"mystery goo","ingredient_id":null,"quantity":1.0,"unit":"piece","confidence":0.4}` +
+		`]}`
+	req := httptest.NewRequest(http.MethodPost, "/pantry/ingest/"+jobID.String()+"/stage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var result service.StageItemsResult
+	err := json.Unmarshal(rec.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.StagedCount)
+	assert.Equal(t, 1, result.NeedsReviewCount)
+}
+
 func TestPostConfirmJob(t *testing.T) {
 	t.Parallel()
 
