@@ -261,6 +261,172 @@ func TestConfirmJob_SkipsItemsWithoutIngredientID(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestStageItems_Success(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	mockDict := NewMockDictionaryResolver(t)
+	mockLLM := NewMockLLMExtractor(t)
+	svc := NewIngestService(mockQ, mockDict, mockLLM)
+
+	jobID := uuid.New()
+	ingredientID := uuid.New()
+	now := time.Now()
+
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{
+		ID:        jobID,
+		Type:      "queue_ingest",
+		RawInput:  "2 cups flour, mystery item",
+		Status:    "pending",
+		CreatedAt: now,
+	}, nil)
+
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{UUID: ingredientID, Valid: true},
+		RawText:      "2 cups flour",
+		Quantity:     2.0,
+		Unit:         "cup",
+		Confidence:   0.95,
+		NeedsReview:  false,
+	}).Return(db.StagedItem{}, nil)
+
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{},
+		RawText:      "mystery item",
+		Quantity:     1.0,
+		Unit:         "piece",
+		Confidence:   0.5,
+		NeedsReview:  true,
+	}).Return(db.StagedItem{}, nil)
+
+	mockQ.EXPECT().UpdateIngestionJobStatus(mock.Anything, db.UpdateIngestionJobStatusParams{
+		ID:     jobID,
+		Status: "staged",
+	}).Return(db.IngestionJob{}, nil)
+
+	result, err := svc.StageItems(context.Background(), jobID, []StagedItemInput{
+		{RawText: "2 cups flour", IngredientID: &ingredientID, Quantity: 2.0, Unit: "cup", Confidence: 0.95},
+		{RawText: "mystery item", IngredientID: nil, Quantity: 1.0, Unit: "piece", Confidence: 0.5},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.StagedCount)
+	assert.Equal(t, 1, result.NeedsReviewCount)
+}
+
+func TestStageItems_JobNotFound(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	mockDict := NewMockDictionaryResolver(t)
+	mockLLM := NewMockLLMExtractor(t)
+	svc := NewIngestService(mockQ, mockDict, mockLLM)
+
+	jobID := uuid.New()
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{}, sql.ErrNoRows)
+
+	_, err := svc.StageItems(context.Background(), jobID, []StagedItemInput{
+		{RawText: "flour", Quantity: 1.0, Unit: "cup", Confidence: 0.9},
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sql.ErrNoRows)
+}
+
+func TestStageItems_WrongStatus(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	mockDict := NewMockDictionaryResolver(t)
+	mockLLM := NewMockLLMExtractor(t)
+	svc := NewIngestService(mockQ, mockDict, mockLLM)
+
+	jobID := uuid.New()
+	now := time.Now()
+
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{
+		ID:        jobID,
+		Type:      "queue_ingest",
+		RawInput:  "test",
+		Status:    "staged",
+		CreatedAt: now,
+	}, nil)
+
+	_, err := svc.StageItems(context.Background(), jobID, []StagedItemInput{
+		{RawText: "flour", Quantity: 1.0, Unit: "cup", Confidence: 0.9},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be pending or processing to stage")
+}
+
+func TestStageItems_MixedResolvedUnresolved(t *testing.T) {
+	t.Parallel()
+
+	mockQ := mocks.NewMockQuerier(t)
+	mockDict := NewMockDictionaryResolver(t)
+	mockLLM := NewMockLLMExtractor(t)
+	svc := NewIngestService(mockQ, mockDict, mockLLM)
+
+	jobID := uuid.New()
+	resolvedID := uuid.New()
+	now := time.Now()
+
+	mockQ.EXPECT().GetIngestionJob(mock.Anything, jobID).Return(db.IngestionJob{
+		ID:        jobID,
+		Type:      "queue_ingest",
+		RawInput:  "test",
+		Status:    "processing",
+		CreatedAt: now,
+	}, nil)
+
+	// Resolved item with high confidence
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{UUID: resolvedID, Valid: true},
+		RawText:      "2 lbs chicken",
+		Quantity:     2.0,
+		Unit:         "lb",
+		Confidence:   0.95,
+		NeedsReview:  false,
+	}).Return(db.StagedItem{}, nil)
+
+	// Resolved item with low confidence → needs review
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{UUID: resolvedID, Valid: true},
+		RawText:      "a thing of cream",
+		Quantity:     1.0,
+		Unit:         "carton",
+		Confidence:   0.5,
+		NeedsReview:  true,
+	}).Return(db.StagedItem{}, nil)
+
+	// Unresolved item → needs review regardless of confidence
+	mockQ.EXPECT().CreateStagedItem(mock.Anything, db.CreateStagedItemParams{
+		JobID:        jobID,
+		IngredientID: uuid.NullUUID{},
+		RawText:      "unknown stuff",
+		Quantity:     1.0,
+		Unit:         "piece",
+		Confidence:   0.8,
+		NeedsReview:  true,
+	}).Return(db.StagedItem{}, nil)
+
+	mockQ.EXPECT().UpdateIngestionJobStatus(mock.Anything, db.UpdateIngestionJobStatusParams{
+		ID:     jobID,
+		Status: "staged",
+	}).Return(db.IngestionJob{}, nil)
+
+	result, err := svc.StageItems(context.Background(), jobID, []StagedItemInput{
+		{RawText: "2 lbs chicken", IngredientID: &resolvedID, Quantity: 2.0, Unit: "lb", Confidence: 0.95},
+		{RawText: "a thing of cream", IngredientID: &resolvedID, Quantity: 1.0, Unit: "carton", Confidence: 0.5},
+		{RawText: "unknown stuff", IngredientID: nil, Quantity: 1.0, Unit: "piece", Confidence: 0.8},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.StagedCount)
+	assert.Equal(t, 2, result.NeedsReviewCount)
+}
+
 func TestConfirmJob_WrongStatusError(t *testing.T) {
 	t.Parallel()
 

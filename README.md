@@ -12,6 +12,7 @@ Pantry Service for WoodPantry. Owns current inventory state — what ingredients
 | DELETE | `/pantry/items/:id` | Remove a pantry item |
 | POST | `/pantry/ingest` | Submit a grocery list text for LLM extraction and staging |
 | GET | `/pantry/ingest/:job_id` | Get ingest job status and staged items for review |
+| POST | `/pantry/ingest/:job_id/stage` | Stage pre-extracted items from Ingestion Pipeline (Phase 2) |
 | POST | `/pantry/ingest/:job_id/confirm` | Commit staged items to pantry |
 | DELETE | `/pantry/reset` | Clear all pantry items |
 
@@ -52,6 +53,24 @@ Accepts a free-text grocery list. Triggers LLM extraction and returns a job ID.
 }
 ```
 
+### POST /pantry/ingest/:job_id/stage
+
+Accepts pre-extracted items from the Ingestion Pipeline (Phase 2). The job must be in `pending` or `processing` status. Transitions job to `staged`.
+
+```json
+// Request
+{
+  "items": [
+    { "raw_text": "2 cups flour", "ingredient_id": "uuid-or-null", "quantity": 2.0, "unit": "cup", "confidence": 0.95 }
+  ]
+}
+
+// Response
+{ "staged_count": 1, "needs_review_count": 0 }
+```
+
+Items with `null` ingredient_id or confidence below 0.7 are flagged `needs_review: true`.
+
 ### POST /pantry/ingest/:job_id/confirm
 
 Commits staged items. Optionally include edited items in the body to override staged values before committing.
@@ -67,6 +86,8 @@ Commits staged items. Optionally include edited items in the body to override st
 
 ## Ingest Flow
 
+### Phase 1 (in-service LLM)
+
 ```
 POST /pantry/ingest
   → LLM extracts ingredient list with quantities
@@ -76,6 +97,15 @@ GET /pantry/ingest/:job_id    ← review staged items
 POST /pantry/ingest/:job_id/confirm
   → Staged items committed to pantry_items
   → pantry.updated event published (Phase 2+)
+```
+
+### Phase 2 (queue-driven via Ingestion Pipeline)
+
+```
+Ingestion Pipeline creates job, extracts items, resolves ingredients
+POST /pantry/ingest/:job_id/stage   ← pipeline posts pre-extracted items
+GET /pantry/ingest/:job_id          ← review staged items
+POST /pantry/ingest/:job_id/confirm ← commit to pantry
 ```
 
 ## Events (Phase 2+)
