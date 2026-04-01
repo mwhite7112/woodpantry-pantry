@@ -212,11 +212,11 @@ func TestPostStageJob_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var result map[string]any
+	var result service.StageItemsResult
 	err := json.Unmarshal(rec.Body.Bytes(), &result)
 	require.NoError(t, err)
-	assert.Equal(t, float64(1), result["staged_count"])
-	assert.Equal(t, float64(0), result["needs_review_count"])
+	assert.Equal(t, 1, result.StagedCount)
+	assert.Equal(t, 0, result.NeedsReviewCount)
 }
 
 func TestPostStageJob_InvalidJobID(t *testing.T) {
@@ -330,11 +330,11 @@ func TestPostStageJob_MixedResolvedUnresolved(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var result map[string]any
+	var result service.StageItemsResult
 	err := json.Unmarshal(rec.Body.Bytes(), &result)
 	require.NoError(t, err)
-	assert.Equal(t, float64(2), result["staged_count"])
-	assert.Equal(t, float64(1), result["needs_review_count"])
+	assert.Equal(t, 2, result.StagedCount)
+	assert.Equal(t, 1, result.NeedsReviewCount)
 }
 
 func TestPostConfirmJob(t *testing.T) {

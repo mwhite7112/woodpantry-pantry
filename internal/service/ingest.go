@@ -235,7 +235,7 @@ type StagedItemInput struct {
 
 // StageItemsResult contains counts returned to the caller after staging.
 type StageItemsResult struct {
-	StagedCount    int `json:"staged_count"`
+	StagedCount      int `json:"staged_count"`
 	NeedsReviewCount int `json:"needs_review_count"`
 }
 
@@ -243,13 +243,20 @@ type StageItemsResult struct {
 // existing job and transitions its status to "staged". This is the Phase 2
 // counterpart to processJob — extraction happens in the Ingestion Pipeline
 // instead of in-service.
-func (s *IngestService) StageItems(ctx context.Context, jobID uuid.UUID, items []StagedItemInput) (StageItemsResult, error) {
+func (s *IngestService) StageItems(
+	ctx context.Context,
+	jobID uuid.UUID,
+	items []StagedItemInput,
+) (StageItemsResult, error) {
 	job, err := s.q.GetIngestionJob(ctx, jobID)
 	if err != nil {
 		return StageItemsResult{}, err
 	}
 	if job.Status != "pending" && job.Status != "processing" {
-		return StageItemsResult{}, fmt.Errorf("job %s has status %q, must be pending or processing to stage", jobID, job.Status)
+		return StageItemsResult{}, fmt.Errorf(
+			"job %s has status %q, must be pending or processing to stage",
+			jobID, job.Status,
+		)
 	}
 
 	needsReview := 0
