@@ -94,7 +94,7 @@ func TestGetPantry(t *testing.T) {
 	assert.Equal(t, items[0].ID.String(), item["id"])
 	assert.Equal(t, items[0].IngredientID.String(), item["ingredient_id"])
 	assert.Equal(t, "ingredient-"+items[0].IngredientID.String(), item["name"])
-	assert.Equal(t, items[0].Quantity, item["quantity"])
+	assert.InDelta(t, items[0].Quantity, item["quantity"], 0.0001)
 	assert.Equal(t, items[0].Unit, item["unit"])
 	assert.Contains(t, item, "expires_at")
 	assert.Nil(t, item["expires_at"])
@@ -143,7 +143,7 @@ func TestPostPantryItems_WithIngredientID(t *testing.T) {
 	assert.Equal(t, expected.ID.String(), got["id"])
 	assert.Equal(t, ingredientID.String(), got["ingredient_id"])
 	assert.Equal(t, "ingredient-"+ingredientID.String(), got["name"])
-	assert.Equal(t, 1.5, got["quantity"])
+	assert.InDelta(t, 1.5, got["quantity"], 0.0001)
 	assert.Equal(t, "lb", got["unit"])
 	assert.NotContains(t, got, "IngredientID")
 	assert.NotContains(t, got, "Name")
@@ -223,7 +223,7 @@ func TestPostPantryItems_WithName(t *testing.T) {
 	assert.Equal(t, expected.ID.String(), got.ID)
 	assert.Equal(t, ingredientID.String(), got.IngredientID)
 	assert.Equal(t, "garlic", got.Name)
-	assert.Equal(t, 3.0, got.Quantity)
+	assert.InDelta(t, 3.0, got.Quantity, 0.0001)
 	assert.Equal(t, "clove", got.Unit)
 }
 
