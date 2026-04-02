@@ -30,6 +30,14 @@ type ResolveResult struct {
 	Created    bool    `json:"created"`
 }
 
+// IngredientDetail mirrors the current response from GET /ingredients/:id.
+// The dictionary service currently serializes sqlc-generated structs, so its
+// response fields are capitalized.
+type IngredientDetail struct {
+	ID   uuid.UUID `json:"ID"`
+	Name string    `json:"Name"`
+}
+
 // Resolve calls the Dictionary service to normalize rawName to a canonical ID.
 func (c *DictionaryClient) Resolve(ctx context.Context, rawName string) (ResolveResult, error) {
 	body, err := json.Marshal(map[string]string{"name": rawName})
@@ -63,4 +71,33 @@ func (c *DictionaryClient) Resolve(ctx context.Context, rawName string) (Resolve
 		return ResolveResult{}, fmt.Errorf("dictionary resolve decode: %w", err)
 	}
 	return result, nil
+}
+
+// GetIngredient fetches a canonical ingredient record by ID.
+func (c *DictionaryClient) GetIngredient(ctx context.Context, id uuid.UUID) (IngredientDetail, error) {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		c.baseURL+"/ingredients/"+id.String(),
+		nil,
+	)
+	if err != nil {
+		return IngredientDetail{}, fmt.Errorf("dictionary get ingredient: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return IngredientDetail{}, fmt.Errorf("dictionary get ingredient: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return IngredientDetail{}, fmt.Errorf("dictionary get ingredient: unexpected status %d", resp.StatusCode)
+	}
+
+	var ingredient IngredientDetail
+	if err := json.NewDecoder(resp.Body).Decode(&ingredient); err != nil {
+		return IngredientDetail{}, fmt.Errorf("dictionary get ingredient decode: %w", err)
+	}
+	return ingredient, nil
 }

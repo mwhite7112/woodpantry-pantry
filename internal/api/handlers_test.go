@@ -28,7 +28,26 @@ func setupRouter(t *testing.T) (*mocks.MockQuerier, http.Handler) {
 	ingestSvc := service.NewIngestService(mockQ, &stubResolver{}, &stubExtractor{})
 
 	dictServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/ingredients/"):
+			id := strings.TrimPrefix(r.URL.Path, "/ingredients/")
+			json.NewEncoder(w).Encode(map[string]string{
+				"ID":   id,
+				"Name": "ingredient-" + id,
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/ingredients/resolve":
+			json.NewEncoder(w).Encode(clients.ResolveResult{
+				Ingredient: struct {
+					ID   uuid.UUID `json:"id"`
+					Name string    `json:"name"`
+				}{ID: uuid.New(), Name: "resolved-ingredient"},
+				Confidence: 1,
+				Created:    false,
+			})
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	t.Cleanup(dictServer.Close)
 
@@ -63,10 +82,28 @@ func TestGetPantry(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var body map[string]json.RawMessage
-	err := json.Unmarshal(rec.Body.Bytes(), &body)
+	var raw map[string]any
+	err := json.Unmarshal(rec.Body.Bytes(), &raw)
 	require.NoError(t, err)
-	assert.Contains(t, string(body["items"]), items[0].ID.String())
+	itemsValue, ok := raw["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, itemsValue, 1)
+
+	item, ok := itemsValue[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, items[0].ID.String(), item["id"])
+	assert.Equal(t, items[0].IngredientID.String(), item["ingredient_id"])
+	assert.Equal(t, "ingredient-"+items[0].IngredientID.String(), item["name"])
+	assert.InDelta(t, items[0].Quantity, item["quantity"], 0.0001)
+	assert.Equal(t, items[0].Unit, item["unit"])
+	assert.Contains(t, item, "expires_at")
+	assert.Nil(t, item["expires_at"])
+	assert.NotEmpty(t, item["added_at"])
+	assert.NotEmpty(t, item["updated_at"])
+	assert.NotContains(t, item, "IngredientID")
+	assert.NotContains(t, item, "Name")
+	assert.NotContains(t, item, "Quantity")
+	assert.NotContains(t, item, "Unit")
 }
 
 func TestPostPantryItems_WithIngredientID(t *testing.T) {
@@ -100,6 +137,16 @@ func TestPostPantryItems_WithIngredientID(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	assert.Equal(t, expected.ID.String(), got["id"])
+	assert.Equal(t, ingredientID.String(), got["ingredient_id"])
+	assert.Equal(t, "ingredient-"+ingredientID.String(), got["name"])
+	assert.InDelta(t, 1.5, got["quantity"], 0.0001)
+	assert.Equal(t, "lb", got["unit"])
+	assert.NotContains(t, got, "IngredientID")
+	assert.NotContains(t, got, "Name")
 }
 
 func TestPostPantryItems_WithName(t *testing.T) {
@@ -114,15 +161,26 @@ func TestPostPantryItems_WithName(t *testing.T) {
 
 	dictServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(clients.ResolveResult{
-			Ingredient: struct {
-				ID   uuid.UUID `json:"id"`
-				Name string    `json:"name"`
-			}{ID: ingredientID, Name: "garlic"},
-			Confidence: 0.95,
-			Created:    false,
-		})
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/ingredients/resolve":
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(clients.ResolveResult{
+				Ingredient: struct {
+					ID   uuid.UUID `json:"id"`
+					Name string    `json:"name"`
+				}{ID: ingredientID, Name: "garlic"},
+				Confidence: 0.95,
+				Created:    false,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/ingredients/"+ingredientID.String():
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{
+				"ID":   ingredientID.String(),
+				"Name": "garlic",
+			})
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer dictServer.Close()
 
@@ -153,6 +211,20 @@ func TestPostPantryItems_WithName(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	var got struct {
+		ID           string  `json:"id"`
+		IngredientID string  `json:"ingredient_id"`
+		Name         string  `json:"name"`
+		Quantity     float64 `json:"quantity"`
+		Unit         string  `json:"unit"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	assert.Equal(t, expected.ID.String(), got.ID)
+	assert.Equal(t, ingredientID.String(), got.IngredientID)
+	assert.Equal(t, "garlic", got.Name)
+	assert.InDelta(t, 3.0, got.Quantity, 0.0001)
+	assert.Equal(t, "clove", got.Unit)
 }
 
 func TestPostPantryItems_MissingFields(t *testing.T) {
