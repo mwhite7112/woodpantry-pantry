@@ -18,6 +18,17 @@ import (
 	"github.com/mwhite7112/woodpantry-pantry/internal/service"
 )
 
+type pantryItemResponse struct {
+	ID           string  `json:"id"`
+	IngredientID string  `json:"ingredient_id"`
+	Name         string  `json:"name"`
+	Quantity     float64 `json:"quantity"`
+	Unit         string  `json:"unit"`
+	ExpiresAt    *string `json:"expires_at"`
+	AddedAt      string  `json:"added_at"`
+	UpdatedAt    string  `json:"updated_at"`
+}
+
 // NewRouter wires all routes.
 func NewRouter(
 	pantry *service.PantryService,
@@ -30,7 +41,7 @@ func NewRouter(
 
 	r.Get("/healthz", handleHealth)
 
-	r.Get("/pantry", handleListPantry(pantry))
+	r.Get("/pantry", handleListPantry(pantry, dict))
 	r.Post("/pantry/items", handleAddItem(pantry, dict))
 	r.Delete("/pantry/items/{id}", handleDeleteItem(pantry))
 	r.Post("/pantry/ingest", handleIngest(ingest))
@@ -48,14 +59,21 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // --- GET /pantry ---
 
-func handleListPantry(pantry *service.PantryService) http.HandlerFunc {
+func handleListPantry(pantry *service.PantryService, dict *clients.DictionaryClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		items, err := pantry.ListItems(r.Context())
 		if err != nil {
 			jsonError(r.Context(), w, "failed to list pantry items", http.StatusInternalServerError, err)
 			return
 		}
-		jsonOK(w, map[string]any{"items": items})
+
+		responseItems, err := buildPantryItemResponses(r.Context(), dict, items)
+		if err != nil {
+			jsonError(r.Context(), w, "failed to load pantry item names", http.StatusBadGateway, err)
+			return
+		}
+
+		jsonOK(w, map[string]any{"items": responseItems})
 	}
 }
 
@@ -121,9 +139,16 @@ func handleAddItem(pantry *service.PantryService, dict *clients.DictionaryClient
 			jsonError(r.Context(), w, "failed to save pantry item", http.StatusInternalServerError, err)
 			return
 		}
+
+		responseItem, err := buildPantryItemResponse(r.Context(), dict, item)
+		if err != nil {
+			jsonError(r.Context(), w, "failed to load pantry item name", http.StatusBadGateway, err)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(item) //nolint:errcheck,musttag // musttag: sqlc-generated struct lacks json tags
+		json.NewEncoder(w).Encode(responseItem) //nolint:errcheck
 	}
 }
 
@@ -178,4 +203,51 @@ func jsonError(ctx context.Context, w http.ResponseWriter, msg string, status in
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
+}
+
+func buildPantryItemResponses(
+	ctx context.Context,
+	dict *clients.DictionaryClient,
+	items []service.PantryItem,
+) ([]pantryItemResponse, error) {
+	response := make([]pantryItemResponse, 0, len(items))
+	for _, item := range items {
+		mapped, err := buildPantryItemResponse(ctx, dict, item)
+		if err != nil {
+			return nil, err
+		}
+		response = append(response, mapped)
+	}
+	return response, nil
+}
+
+func buildPantryItemResponse(
+	ctx context.Context,
+	dict *clients.DictionaryClient,
+	item service.PantryItem,
+) (pantryItemResponse, error) {
+	ingredient, err := dict.GetIngredient(ctx, item.IngredientID)
+	if err != nil {
+		return pantryItemResponse{}, err
+	}
+
+	return pantryItemResponse{
+		ID:           item.ID.String(),
+		IngredientID: item.IngredientID.String(),
+		Name:         ingredient.Name,
+		Quantity:     item.Quantity,
+		Unit:         item.Unit,
+		ExpiresAt:    formatNullTime(item.ExpiresAt),
+		AddedAt:      item.AddedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:    item.UpdatedAt.UTC().Format(time.RFC3339),
+	}, nil
+}
+
+func formatNullTime(t sql.NullTime) *string {
+	if !t.Valid {
+		return nil
+	}
+
+	formatted := t.Time.UTC().Format(time.RFC3339)
+	return &formatted
 }

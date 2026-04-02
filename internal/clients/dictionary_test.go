@@ -107,3 +107,44 @@ func TestResolve_InvalidJSON(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "decode")
 }
+
+func TestGetIngredient_Success(t *testing.T) {
+	t.Parallel()
+
+	ingredientID := uuid.New()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/ingredients/"+ingredientID.String(), r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"ID":   ingredientID.String(),
+			"Name": "garlic",
+		})
+	}))
+	defer server.Close()
+
+	client := NewDictionaryClient(server.URL, server.Client())
+	ingredient, err := client.GetIngredient(context.Background(), ingredientID)
+
+	require.NoError(t, err)
+	assert.Equal(t, ingredientID, ingredient.ID)
+	assert.Equal(t, "garlic", ingredient.Name)
+}
+
+func TestGetIngredient_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	ingredientID := uuid.New()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not valid json{{{"))
+	}))
+	defer server.Close()
+
+	client := NewDictionaryClient(server.URL, server.Client())
+	_, err := client.GetIngredient(context.Background(), ingredientID)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode")
+}

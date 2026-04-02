@@ -33,13 +33,15 @@ func NewPantryService(q db.Querier, publishers ...UpdatePublisher) *PantryServic
 	}
 }
 
-func (s *PantryService) ListItems(ctx context.Context) ([]db.PantryItem, error) {
+type PantryItem = db.PantryItem
+
+func (s *PantryService) ListItems(ctx context.Context) ([]PantryItem, error) {
 	items, err := s.q.ListPantryItems(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if items == nil {
-		return []db.PantryItem{}, nil
+		return []PantryItem{}, nil
 	}
 	return items, nil
 }
