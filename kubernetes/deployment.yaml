@@ -32,6 +32,12 @@ spec:
                 secretKeyRef:
                   name: pantry-db-secret
                   key: url
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pantry-db-secret
+                  key: rabbitmq_url
+                  optional: true
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
